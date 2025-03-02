@@ -7,7 +7,11 @@ import {
   useInfiniteQuery,
   type InfiniteData,
   type UseInfiniteQueryOptions,
+  type QueryKey,
+  type QueryFunctionContext,
 } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import { createInfiniteOffsetKeyGetter } from '../lib/key';
 
 /**
  * The return type of the `useOffsetInfiniteQuery` hook
@@ -51,16 +55,41 @@ export function useOffsetInfiniteQuery<
     pageSize?: number;
     fallbackData?: InfiniteData<Result[]>;
   } & Omit<
-    UseInfiniteQueryOptions<Result[], PostgrestError>,
+    UseInfiniteQueryOptions<
+      Result[], 
+      PostgrestError,
+      InfiniteData<Result[]>,
+      Result[],
+      QueryKey
+    >,
     'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
   >,
 ): UseOffsetInfiniteQueryReturn<Result> {
   const pageSize = config?.pageSize ?? 20;
   
-  // @ts-ignore - Ignoring type errors for now to get a working implementation
-  const infiniteQuery = useInfiniteQuery<Result[], PostgrestError>({
-    queryKey: query ? ['postgrest-infinite', String(query), pageSize] : ['disabled-query'],
-    queryFn: async ({ pageParam }: any) => {
+  // Generate query key using createInfiniteOffsetKeyGetter
+  const queryKey = query ? 
+    createInfiniteOffsetKeyGetter<Schema, Table, Result, RelationName, Relationships>(query, pageSize) : 
+    [];
+  
+  const {
+    data,
+    error,
+    isLoading,
+    isError,
+    isFetching,
+    isSuccess,
+    status,
+    refetch,
+    fetchNextPage,
+  } = useInfiniteQuery<
+    Result[],
+    PostgrestError,
+    InfiniteData<Result[]>,
+    QueryKey
+  >({
+    queryKey,
+    queryFn: async ({ pageParam }) => {
       if (!query) return [];
       
       const offset = typeof pageParam === 'number' ? pageParam : 0;
@@ -70,46 +99,46 @@ export function useOffsetInfiniteQuery<
       
       return data as Result[] || [];
     },
-    getNextPageParam: (_lastPage: any, allPages: any) => {
+    getNextPageParam: (_lastPage, allPages) => {
       return allPages.length;
     },
     initialPageParam: 0,
-    enabled: !!query,
     ...config,
   });
 
   // Calculate size based on fallbackData if available and no data from query yet
-  const size = infiniteQuery.data?.pages?.length || 
-    (config?.fallbackData?.pages?.length && !infiniteQuery.data ? config.fallbackData.pages.length : 0);
+  const size = data?.pages?.length || 
+    (config?.fallbackData?.pages?.length && !data ? config.fallbackData.pages.length : 0);
+
+  const setSize = useCallback((sizeOrUpdater: number | ((size: number) => number)) => {
+    const currentSize = size;
+    const newSize = typeof sizeOrUpdater === 'function' 
+      ? sizeOrUpdater(currentSize) 
+      : sizeOrUpdater;
+    
+    // If increasing size, fetch more pages
+    if (newSize > currentSize) {
+      // Fetch pages sequentially
+      const pagesToFetch = newSize - currentSize;
+      for (let i = 0; i < pagesToFetch; i++) {
+        fetchNextPage();
+      }
+    }
+    // If decreasing size, we can't actually remove pages from React Query's cache
+    // but we can limit what we return in the data property
+  }, [size, fetchNextPage]);
 
   // Convert React Query's infinite query result to match the expected API
   return {
-    // @ts-ignore - Ignoring type errors for now to get a working implementation
-    data: infiniteQuery.data?.pages || (config?.fallbackData?.pages && !infiniteQuery.data ? config.fallbackData.pages : []),
+    data: data?.pages || (config?.fallbackData?.pages && !data ? config.fallbackData.pages : []),
     size,
-    setSize: (sizeOrUpdater) => {
-      const currentSize = size;
-      const newSize = typeof sizeOrUpdater === 'function' 
-        ? sizeOrUpdater(currentSize) 
-        : sizeOrUpdater;
-      
-      // If increasing size, fetch more pages
-      if (newSize > currentSize) {
-        // Fetch pages sequentially
-        const pagesToFetch = newSize - currentSize;
-        for (let i = 0; i < pagesToFetch; i++) {
-          infiniteQuery.fetchNextPage();
-        }
-      }
-      // If decreasing size, we can't actually remove pages from React Query's cache
-      // but we can limit what we return in the data property
-    },
-    error: infiniteQuery.error,
-    isLoading: infiniteQuery.isLoading,
-    isError: infiniteQuery.isError,
-    isFetching: infiniteQuery.isFetching,
-    isSuccess: infiniteQuery.isSuccess,
-    status: infiniteQuery.status,
-    refetch: infiniteQuery.refetch,
+    setSize,
+    error,
+    isLoading,
+    isError,
+    isFetching,
+    isSuccess,
+    status,
+    refetch,
   };
 }

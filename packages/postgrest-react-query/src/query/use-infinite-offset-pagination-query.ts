@@ -168,7 +168,6 @@ function useInfiniteOffsetPaginationQuery<
       return (allPages.length - 2) * pageSize;
     },
     initialPageParam: 0,
-    enabled: !!query,
     ...config,
   });
 
