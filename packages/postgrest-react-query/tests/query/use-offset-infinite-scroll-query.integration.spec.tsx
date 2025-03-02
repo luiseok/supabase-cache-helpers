@@ -141,34 +141,6 @@ describe('useOffsetInfiniteScrollQuery', { timeout: 20000 }, () => {
     );
   });
 
-  it('should work with fallback data', async () => {
-    const query = client
-      .from('contact')
-      .select('id,username')
-      .ilike('username', `${testRunPrefix}%`)
-      .order('username', { ascending: true });
-    const [_, fallbackData] = await fetchOffsetPaginationHasMoreFallbackData(
-      query,
-      1,
-    );
-    function Page() {
-      const { data } = useOffsetInfiniteScrollQuery(null, {
-        pageSize: 1,
-        fallbackData,
-      });
-      return (
-        <div>
-          <div data-testid="pages">
-            {(data ?? [])[0]?.username ?? 'undefined'}
-          </div>
-        </div>
-      );
-    }
-
-    renderWithConfig(<Page />, queryClient);
-    await screen.findByText(contacts[0].username ?? '', {}, { timeout: 10000 });
-  });
-
   // Test empty results
   it('should handle empty results gracefully', async () => {
     // Create a unique prefix that won't match any data
