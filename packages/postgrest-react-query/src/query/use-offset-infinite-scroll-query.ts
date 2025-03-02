@@ -66,13 +66,10 @@ function useOffsetInfiniteScrollQuery<
       QueryKey,
       number
     >,
-    'queryKey' | 'queryFn' | 'getNextPageParam' | 'getPreviousPageParam' | 'initialPageParam'
+    'queryKey' | 'queryFn' | 'getNextPageParam' | 'getPreviousPageParam' | 'initialPageParam' | 'maxPages'
   > & { 
     pageSize?: number;
-    fallbackData?: {
-      pages: PostgrestHasMorePaginationResponse<Result>[];
-      pageParams: number[];
-    };
+    maxPages?: number;
   },
 ): UseOffsetInfiniteScrollQueryReturn<Result> {
   const pageSize = config?.pageSize ?? 20;
@@ -127,8 +124,7 @@ function useOffsetInfiniteScrollQuery<
       return pages.length * pageSize;
     },
     initialPageParam: 0,
-    enabled: !!query,
-    initialData: config?.fallbackData,
+    maxPages: config?.maxPages,
     ...config,
   });
 
